@@ -1,0 +1,108 @@
+#Creates DO Droplet and installs Wordpress
+---
+- hosts: digitalocean
+
+  vars:
+    my_token:<insert token here>
+    dropletnames:
+      - LAMP-Machine-1
+      - LAMP-Machine-2
+
+  tasks:
+  - name: Push key to DO
+    user: >
+      name={{ ansible_user_id }}
+      generate_ssh_key=yes
+      ssh_key_file=.ssh/id_rsa
+
+  - name: Check for key in DO
+    digital_ocean: >
+      state=present
+      command=ssh
+      name=ThisIsAKey
+      ssh_pub_key={{ lookup('file', '~/.ssh/id_rsa.pub') }}
+      api_token={{ my_token }}
+    register: ThisIsAKey
+
+  - name: Create Droplet
+    digital_ocean:
+      state=present
+      command=droplet
+      name="{{ item }}"
+      unique_name=yes
+      ssh_key_ids="{{ ThisIsAKey.ssh_key.id }}"
+      api_token="{{ my_token }}"
+      size_id=512mb
+      region_id=nyc1
+      image_id=centos-7-x64
+      wait=yes
+      wait_timeout=500
+    with_items: "{{dropletnames}}"
+    register: droplet_details
+
+  - name: Create temp hosts for droplets
+    add_host:
+      name: "{{ item.droplet.ip_address }}"
+      group: droplets
+    with_items: "{{ droplet_details.results }}" 
+    
+  - pause:
+     seconds: 30
+
+- hosts: droplets
+  tasks:
+
+#installs LAMP stack and downloads/condifures wordpress
+
+  - name: Remove old packages
+    yum:
+      name:
+        - httpd
+        - mariadb-server
+        - php
+        - php-mysql
+        - php-gd
+        - epel-release
+        - MySQL-python
+      state: absent
+
+  - name: Install reqired packages
+    yum:
+      name:
+        - httpd
+        - mariadb-server
+        - php
+        - php-mysql
+        - php-gd
+        - epel-release
+        - MySQL-python
+      state: present
+
+  - name: Update required packages
+    yum:
+      name:
+        - httpd
+        - mariadb-server
+        - php
+        - php-mysql
+        - php-gd
+        - epel-release
+        - MySQL-python
+      state: latest
+
+  - name: Start Apache and enable it on boot
+    service:
+     name: httpd
+     state: started
+     enabled: yes
+
+  - name: Start MariaDB and enable it on boot
+    service:
+     name: mariadb
+     state: started
+     enabled: yes
+
+  - name: Reload service httpd, in all cases
+    service:
+      name: httpd
+      state: reloaded
